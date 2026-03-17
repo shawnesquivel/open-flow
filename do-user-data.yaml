@@ -1,0 +1,14 @@
+#cloud-config
+package_update: true
+package_upgrade: false
+
+packages:
+  - wget
+  - software-properties-common
+
+runcmd:
+  - sh -c 'wget -O - https://dl.openfoam.org/gpg.key > /etc/apt/trusted.gpg.d/openfoam.asc'
+  - add-apt-repository -y http://dl.openfoam.org/ubuntu
+  - apt-get update
+  - apt-get install -y openfoam12
+  - sh -c 'printf "\n. /opt/openfoam12/etc/bashrc\n" >> /root/.bashrc'
