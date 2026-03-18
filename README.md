@@ -2,6 +2,8 @@
 
 Run CFD simulations, review outputs, and ask questions — all from one interface.
 
+![FlowPilot](openfoam-chat-mvp/public/flowpilot-screenshot.png)
+
 FlowPilot wraps OpenFOAM behind a conversational UI powered by Claude. You describe what you want in plain English; it configures the case, runs the solver, generates visuals, and explains the results.
 
 ## How it works
