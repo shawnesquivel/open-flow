@@ -1,1 +1,7 @@
 /.DS_Store
+/openfoam-chat-mvp/.next
+/openfoam-chat-mvp/node_modules
+/openfoam-chat-mvp/.env.local
+/openfoam-chat-mvp/.env
+/openfoam-chat-mvp/.vercel
+/openfoam-chat-mvp/tmp
