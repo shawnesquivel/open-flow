@@ -210,7 +210,7 @@ export function Workspace({ assets }: Props) {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 {assets.slice(0, revealedAssetCount).map((asset) => (
                   <article
                     key={asset.name}
@@ -219,7 +219,7 @@ export function Workspace({ assets }: Props) {
                     <img
                       src={`/api/demo-assets/${asset.name}`}
                       alt={asset.title}
-                      className="aspect-video w-full object-cover"
+                      className="aspect-[16/10] w-full object-cover"
                     />
                     <div className="p-3">
                       <h3 className="mb-1 text-sm font-black text-[#3a2a1d]">

@@ -1,246 +1,87 @@
-# OpenFOAM Chat MVP
+# FlowPilot
 
-Single-user, single-case, ephemeral Next.js app for chatting with Claude about one OpenFOAM tutorial case and letting it safely edit, run, and visualize that case.
+Run CFD simulations, review outputs, and ask questions — all from one interface.
 
-## MVP shape
+FlowPilot wraps OpenFOAM behind a conversational UI powered by Claude. You describe what you want in plain English; it configures the case, runs the solver, generates visuals, and explains the results.
 
-- One Ubuntu droplet runs both the web app and OpenFOAM.
-- No database.
-- No queue.
-- No multi-tenancy.
-- No persistent job history.
-- One active workspace at a time, copied from a template case.
-- Artifacts are local PNG/CSV/log files served by the same app.
+## How it works
 
-This is the cheapest reasonable version because it avoids:
+1. You type a prompt like *"Run the baseline duct airflow simulation and generate the key visuals."*
+2. The assistant reviews the setup, builds the mesh, runs the solver, and renders outputs.
+3. Visuals (velocity fields, streamlines, pressure maps, profiles) appear in the workspace as they're generated.
+4. The assistant summarizes the results in the chat panel.
 
-- orchestration across multiple machines
-- object storage
-- background workers
-- session persistence
+## Quick start
 
-## Recommended droplet
+```bash
+cd openfoam-chat-mvp
+cp .env.example .env.local
+# Set ANTHROPIC_API_KEY and adjust paths in .env.local
+npm install
+npm run dev
+```
 
-- `s-2vcpu-4gb` if you want the web app and OpenFOAM on one box with some headroom
-- `s-2vcpu-2gb` is okay for `pitzDaily`, but 4 GB is safer once the Next server and ParaView batch rendering are on the same machine
+Open `http://localhost:3000/demo` and click **Run analysis**.
+
+## Environment variables
+
+| Variable | Description |
+|---|---|
+| `ANTHROPIC_API_KEY` | Your Anthropic API key |
+| `ANTHROPIC_MODEL` | Claude model to use (default: `claude-sonnet-4-6`) |
+| `OPENFOAM_TEMPLATE_CASE` | Path to the tutorial case used as the template |
+| `OPENFOAM_WORK_ROOT` | Ephemeral workspace directory (copied from template before each run) |
+| `OPENFOAM_BASHRC` | Path to OpenFOAM's `bashrc` for sourcing before commands |
+| `OPENFOAM_ARTIFACT_DIR` | Directory for generated PNGs/CSVs served to the UI |
+| `OPENFOAM_DEMO_ASSET_DIR` | Pre-built visualization assets for the `/demo` route |
 
 ## Architecture
 
-### Runtime components
-
-1. `Next.js UI`
-   - chat box
-   - current case summary
-   - run status
-   - artifact gallery
-
-2. `Next.js API routes`
-   - receive the user prompt
-   - call Anthropic Messages API
-   - run the Claude tool loop
-   - execute whitelisted local tools
-   - return final text + updated artifact list
-
-3. `Local OpenFOAM workspace`
-   - copied from `OPENFOAM_TEMPLATE_CASE` into `OPENFOAM_WORK_ROOT/current`
-   - reset before each one-shot run
-   - contains all edited dictionaries, logs, output times, and post-processing output
-
-4. `Artifact folder`
-   - generated PNGs/CSVs copied into `OPENFOAM_ARTIFACT_DIR`
-   - served to the frontend through `/api/artifacts`
+- **Next.js 15** with App Router and Tailwind v4
+- **Anthropic Messages API** with a tool-use loop (not the Agent SDK)
+- **Local OpenFOAM workspace** — copied from a template, reset per run
+- **No database, no queue, no multi-tenancy** — single user, single case, ephemeral
 
 ### Request flow
 
-1. User sends chat prompt.
-2. `POST /api/chat` builds a Messages API request with OpenFOAM tools.
-3. Claude returns text and zero or more `tool_use` blocks.
-4. The backend executes each requested tool locally.
-5. Tool results are sent back as `tool_result` blocks.
-6. Loop continues until Claude returns a normal final answer.
-7. Frontend refreshes workspace state and artifact list.
+1. User sends a chat prompt
+2. `POST /api/chat` builds a Messages API request with OpenFOAM tools
+3. Claude returns text and tool-use blocks
+4. Backend executes each tool locally (mesh, solve, render, etc.)
+5. Tool results loop back until Claude produces a final answer
+6. Frontend refreshes the workspace and artifact list
 
-This matches Anthropic's documented `tool_use` / `tool_result` loop from the Messages API docs.
+### API routes
 
-## Anthropic tool-use notes
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/chat` | POST | Primary chat endpoint — prompt in, assistant response + artifacts out |
+| `/api/state` | GET | Current workspace summary |
+| `/api/reset` | POST | Wipe and re-copy workspace from template |
+| `/api/artifacts` | GET | List generated artifacts |
+| `/api/artifacts/[...path]` | GET | Stream an artifact file |
+| `/api/demo-assets/[name]` | GET | Serve pre-built visualization assets |
 
-This MVP should use the plain Messages API, not the higher-level Agent SDK, because:
+### Claude tools
 
-- it is simpler to reason about
-- the backend already owns the tool execution
-- we only need a few local tools
+| Tool | Actions |
+|---|---|
+| `openfoam_case_inspect` | `summary`, `read_file`, `list_files` |
+| `openfoam_case_edit` | `write_file`, `replace_text` (scoped to case dictionaries) |
+| `openfoam_run` | `block_mesh`, `check_mesh`, `run_case`, `postprocess`, `render_phase1` |
+| `openfoam_artifacts` | `list`, `read_text` |
 
-Relevant Anthropic details:
+## Tech stack
 
-- define tools in the `tools` array with `name`, `description`, and `input_schema`
-- inspect `response.stop_reason === "tool_use"`
-- collect tool calls from `response.content`
-- send results back as user content blocks of type `tool_result`
-- prefer `strict: true` on tools so inputs match schema
+- Next.js 15, React 19, TypeScript
+- Tailwind CSS v4
+- Anthropic Claude SDK
+- OpenFOAM 12 (local)
 
-## API endpoints
+## What's not built yet
 
-### `POST /api/chat`
-
-Primary endpoint. Accepts a single prompt and optional prior message history for the current browser session.
-
-Request:
-
-```json
-{
-  "prompt": "Increase inlet velocity to 20 m/s and run the case.",
-  "messages": []
-}
-```
-
-Response:
-
-```json
-{
-  "assistantText": "I increased the inlet velocity, ran the case, and generated fresh images.",
-  "messages": [],
-  "artifacts": [
-    {
-      "name": "velocity_magnitude.png",
-      "url": "/api/artifacts/velocity_magnitude.png",
-      "kind": "image"
-    }
-  ],
-  "workspaceState": {
-    "activeCase": "pitzDaily",
-    "latestTime": "0.3",
-    "artifactCount": 5
-  }
-}
-```
-
-### `GET /api/state`
-
-Returns a lightweight summary of the current ephemeral workspace.
-
-### `POST /api/reset`
-
-Deletes the current workspace and re-copies it from the template case.
-
-### `GET /api/artifacts`
-
-Lists generated artifacts.
-
-### `GET /api/artifacts/[...path]`
-
-Streams an artifact file to the UI.
-
-## Tool schema
-
-The backend exposes four Claude tools.
-
-### `openfoam_case_inspect`
-
-Use for safe reads only.
-
-Actions:
-
-- `summary`
-- `read_file`
-- `list_files`
-
-### `openfoam_case_edit`
-
-Use to replace or overwrite known case files. This is intentionally scoped to case dictionaries, not arbitrary shell editing.
-
-Actions:
-
-- `write_file`
-- `replace_text`
-
-Allowed paths:
-
-- `0.orig/U`
-- `0.orig/p`
-- `0.orig/k`
-- `0.orig/epsilon`
-- `0.orig/nut`
-- `0.orig/nuTilda`
-- `constant/physicalProperties`
-- `constant/momentumTransport`
-- `system/controlDict`
-- `system/fvSchemes`
-- `system/fvSolution`
-- `system/functions`
-
-### `openfoam_run`
-
-Use to run only whitelisted OpenFOAM workflows.
-
-Actions:
-
-- `block_mesh`
-- `check_mesh`
-- `run_case`
-- `postprocess`
-- `render_phase1`
-
-### `openfoam_artifacts`
-
-Use to list and inspect outputs already generated.
-
-Actions:
-
-- `list`
-- `read_text`
-
-## Suggested folder structure
-
-```text
-openfoam-chat-mvp/
-  .env.example
-  package.json
-  README.md
-  src/
-    app/
-      page.tsx
-      api/
-        chat/route.ts
-        state/route.ts
-        reset/route.ts
-        artifacts/
-          route.ts
-          [...path]/route.ts
-    lib/
-      anthropic/
-        client.ts
-        loop.ts
-        tools.ts
-      openfoam/
-        config.ts
-        workspace.ts
-        runner.ts
-        artifacts.ts
-      types.ts
-```
-
-## Local setup
-
-1. Install OpenFOAM 12 on the droplet.
-2. Copy `.env.example` to `.env.local`.
-3. Set `ANTHROPIC_API_KEY` yourself.
-4. Install packages with `npm install`.
-5. Run `npm run dev`.
-
-## First user stories
-
-- "Summarize this case."
-- "Increase inlet velocity to 20 m/s."
-- "Change the end time to 1.0."
-- "Run the case."
-- "Generate velocity, pressure, and streamline images."
-- "Show me the latest artifacts."
-
-## What not to build yet
-
-- authentication
-- per-user workspaces
-- long-running queues
-- multi-case uploads
-- general arbitrary shell access
-- full browser-based ParaView
+- Authentication / multi-user
+- Persistent job history
+- Background queues
+- Multi-case uploads
+- Arbitrary shell access
