@@ -1,6 +1,8 @@
 # FlowPilot
 
-Talk to your simulations like they understand you — because now they do.
+**AI copilot for engineering simulations.**
+
+One prompt runs the full CFD pipeline — mesh, solve, visualize, explain. No config files, no terminal.
 
 ![FlowPilot](openfoam-chat-mvp/public/flowpilot-screenshot.png)
 
