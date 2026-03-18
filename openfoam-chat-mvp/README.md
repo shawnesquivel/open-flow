@@ -1,6 +1,6 @@
 # FlowPilot
 
-Run CFD simulations, review outputs, and ask questions — all from one interface.
+Talk to your simulations like they understand you — because now they do.
 
 ![FlowPilot](public/flowpilot-screenshot.png)
 
